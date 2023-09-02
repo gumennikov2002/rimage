@@ -3,6 +3,7 @@ import os.path
 from os.path import join, dirname
 import shutil
 import uuid
+import concurrent.futures
 
 from dotenv import load_dotenv
 import requests
@@ -20,13 +21,12 @@ arg_parser.add_argument('-ww', '--width', type=int)
 arg_parser.add_argument('-hh', '--height', type=int)
 args = arg_parser.parse_args()
 
-count = args.count if args.count else 1
-category = args.type if args.type else 'abstract'
-width = args.width if args.width else 640
-height = args.height if args.height else 480
+count = args.count or 1
+category = args.type or 'abstract'
+width = args.width or 640
+height = args.height or 480
 api_url = 'https://api.api-ninjas.com/v1/randomimage?category={}'.format(category) \
           + '&width={}'.format(width) + '&height={}'.format(height)
-i = 0
 
 
 def safe_open_w(path):
@@ -34,16 +34,20 @@ def safe_open_w(path):
     return open(path, 'wb')
 
 
-while i < count:
+def download_image(url):
     response = requests.get(
-        url=api_url,
+        url=url,
         headers={'X-Api-Key': API_KEY, 'Accept': 'image/jpg'},
         stream=True
     )
 
-    if response.status_code == requests.codes.ok:
-        with safe_open_w(f'{SAVE_PATH}/{uuid.uuid1()}.jpg') as file:
-            shutil.copyfileobj(response.raw, file)
-    else:
-        print("Error:", response.status_code, response.text)
-    i += 1
+    if not response.ok:
+        return print("Error:", response.status_code, response.text)
+
+    with safe_open_w(f'{SAVE_PATH}/{uuid.uuid1()}.jpg') as file:
+        shutil.copyfileobj(response.raw, file)
+
+
+with concurrent.futures.ThreadPoolExecutor() as executor:
+    urls = [api_url] * count
+    executor.map(download_image, urls)
